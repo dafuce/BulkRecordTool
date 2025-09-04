@@ -12,3 +12,4 @@ C:\Users\dafuc\Documents\BulkRecordTool\obj\Debug\net9.0\refint\BulkRecordTool.d
 C:\Users\dafuc\Documents\BulkRecordTool\obj\Debug\net9.0\BulkRecordTool.pdb
 C:\Users\dafuc\Documents\BulkRecordTool\obj\Debug\net9.0\BulkRecordTool.genruntimeconfig.cache
 C:\Users\dafuc\Documents\BulkRecordTool\obj\Debug\net9.0\ref\BulkRecordTool.dll
+C:\Users\dafuc\Documents\BulkRecordTool\obj\Debug\net9.0\BulkRecordTool.sourcelink.json

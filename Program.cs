@@ -6,251 +6,119 @@ using System.Text.Json;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Diagnostics;
 class Program
 {
     static int recordCount = 100000; // Number of records to generate
     static double faultyChance = 0.01; // 1% chance to make a card number faulty
 
     private static Dictionary<string, long> counters = new Dictionary<string, long>(); // To ensure unique card numbers per BIN 
-
-    static string[] firstNames = { // TODO: let this and other hardcoded lists be read from a file
-    "Alice",
-    "Bob",
-    "Charlie",
-    "David",
-    "Emma",
-    "Frank",
-    "Grace",
-    "Henry",
-    "Isabella",
-    "Jack",
-    "Karen",
-    "Liam",
-    "Mia",
-    "Noah",
-    "Olivia",
-    "Paul",
-    "Quinn",
-    "Robert",
-    "Sophia",
-    "Thomas",
-    "Uma",
-    "Victor",
-    "William",
-    "Xavier",
-    "Yara",
-    "Zoe"
-};
-
-    static string[] lastNames = {
-    "Anderson",
-    "Brown",
-    "Clark",
-    "Davis",
-    "Evans",
-    "Foster",
-    "Garcia",
-    "Harris",
-    "Ingram",
-    "Johnson",
-    "King",
-    "Lewis",
-    "Miller",
-    "Nelson",
-    "Owens",
-    "Parker",
-    "Quinn",
-    "Roberts",
-    "Smith",
-    "Taylor",
-    "Underwood",
-    "Vargas",
-    "Williams",
-    "Xiong",
-    "Young",
-    "Zimmerman"
-};
-
-    static string[] countries = {
-    "India",
-    "China",
-    "United States of America",
-    "Indonesia",
-    "Pakistan",
-    "Nigeria",
-    "Brazil",
-    "Bangladesh",
-    "Russian Federation",
-    "Ethiopia",
-    "Mexico",
-    "Japan",
-    "Egypt",
-    "Philippines",
-    "Democratic Republic of the Congo",
-    "Viet Nam",
-    "Iran (Islamic Republic of)",
-    "Türkiye",
-    "Germany",
-    "Thailand",
-    "United Republic of Tanzania",
-    "United Kingdom",
-    "France",
-    "South Africa",
-    "Italy",
-    "Kenya",
-    "Myanmar",
-    "Colombia",
-    "Republic of Korea",
-    "Sudan",
-    "Uganda",
-    "Spain",
-    "Algeria",
-    "Iraq",
-    "Argentina",
-    "Afghanistan",
-    "Yemen",
-    "Canada",
-    "Angola",
-    "Ukraine",
-    "Morocco",
-    "Poland",
-    "Uzbekistan",
-    "Malaysia",
-    "Mozambique",
-    "Ghana",
-    "Peru",
-    "Saudi Arabia",
-    "Madagascar",
-    "Côte d’Ivoire",
-    "Nepal",
-    "Venezuela",
-    "Sri Lanka",
-    "Cambodia",
-    "Zimbabwe",
-    "Rwanda",
-    "Benin",
-    "Tunisia",
-    "Burundi",
-    "Bolivia",
-    "Belgium",
-    "Cuba",
-    "Haiti",
-    "South Sudan",
-    "Dominican Republic",
-    "Greece",
-    "Czech Republic",
-    "Sweden",
-    "Portugal",
-    "Jordan",
-    "Azerbaijan",
-    "United Arab Emirates",
-    "Hungary",
-    "Honduras",
-    "Belarus",
-    "Tajikistan",
-    "Israel",
-    "Austria",
-    "Papua New Guinea",
-    "Switzerland",
-    "Togo",
-    "Sierra Leone",
-    "Hong Kong",
-    "Laos",
-    "Paraguay",
-    "Libya",
-    "El Salvador",
-    "Nicaragua",
-    "Kyrgyzstan",
-    "Bulgaria",
-    "Serbia",
-    "Lebanon",
-    "Turkmenistan",
-    "Singapore",
-    "Denmark",
-    "Finland",
-    "Slovakia",
-    "Norway",
-    "Oman",
-    "Palestine State"
-};
-
-    static Dictionary<string,string> cardBins = new Dictionary<string, string>
-{
-    { "Visa Classic Consumer", "40000001" },
-    { "Visa Gold Consumer", "40120022" },
-    { "Visa Platinum Consumer", "40230033" },
-    { "Visa Infinite Consumer", "40340044" },
-    { "Visa Gold Business", "40450055" },
-    { "Visa Platinum Business", "40560066" },
-    { "Visa Corporate Card", "40670077" },
-
-    { "Mastercard Standard Consumer", "51000001" },
-    { "Mastercard Gold Consumer", "52010022" },
-    { "Mastercard Platinum Consumer", "53020033" },
-    { "Mastercard World Elite Consumer", "54030044" },
-    { "Mastercard Gold Business", "55040055" },
-    { "Mastercard Platinum Business", "22230045" }, // 2-series
-    { "Mastercard Corporate Card", "27200099" },    // upper end of 2-series
-
-    { "American Express Green Consumer", "34000012" },
-    { "American Express Gold Consumer", "37010034" },
-    { "American Express Platinum Consumer", "37120056" },
-
-    { "Discover Cashback Consumer", "60110078" },
-    { "UnionPay Platinum Consumer", "62000011" },
-    { "UnionPay Business Card", "62123456" }
-};
-
-
+    public static Random rand = new Random();
     static void Main(string[] args)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew(); // Start timing
+        var stopwatch = Stopwatch.StartNew(); // Start timing
+
+        Console.WriteLine("Loading sample data...");
+
+        string projectRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..");
+        projectRoot = Path.GetFullPath(projectRoot);
+
+        string json = File.ReadAllText(Path.Combine(projectRoot,"sampledata.json"));
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        // Extract simple arrays
+        var firstnames = doc.RootElement
+            .GetProperty("firstnames")
+            .EnumerateArray()
+            .Select(x => x.GetString()!)
+            .ToList();
+
+        var lastnames = doc.RootElement
+            .GetProperty("lastnames")
+            .EnumerateArray()
+            .Select(x => x.GetString()!)
+            .ToList();
+
+        // Deserialize to List<AddressBlock>
+        var addressesJson = doc.RootElement.GetProperty("addresses");
+        var addresses = JsonSerializer
+                        .Deserialize<List<AddressBlock>>(addressesJson.GetRawText())!
+                        .ToList();
+
+        // Deserialize to List<Products>
+        var productsJson = doc.RootElement.GetProperty("products");
+        var products = JsonSerializer
+                        .Deserialize<List<Product>>(productsJson.GetRawText())!
+                        .ToList();
+
+        // Initialize counters for each BIN
+        foreach (Product p in products)
+        {
+            if (!counters.ContainsKey(p.bin!))
+            {
+                counters[p.bin!] = 0;
+            }
+        }
+
+        // Console.WriteLine("Combinations possible :" + (firstNames.Length * lastNames.Length * addresses.Length).ToString());
 
         Console.WriteLine($"Generating {recordCount} records...");
-
-        // Console.WriteLine("Combinations possible :" + (firstNames.Length * lastNames.Length * countries.Length * cardBins.Count).ToString());
 
         List<Record> records = new List<Record>(recordCount);
 
         for (int i = 0; i < recordCount; i++)
         {
-            Record record = GenerateRecord();
+            string firstName = firstnames[rand.Next(firstnames.Count)];
+            string lastName = lastnames[rand.Next(lastnames.Count)];
+
+            CardHolder cardHolder = new CardHolder(firstName, lastName, "", "");
+
+            AddressBlock address = addresses[rand.Next(addresses.Count)];
+
+            Product prod = products[rand.Next(products.Count)];
+            Card card = new Card(prod.product!, prod.cardType!, prod.bin!); // Generate card with unique PAN, ExpiryDate, CVV
+
+            Record record = new Record(
+                cardHolder,
+                address,
+                card,
+                null
+            );
 
             records.Add(record);
-
-            // Console.WriteLine($"{record.FirstName},{record.LastName},{record.Country},{record.CardType},{record.CardNumber},{record.ExpiryDate},{record.CVV}");
         }
 
         // Write to JSON file
 
+        string fileName = "TestData_" + recordCount.ToString() + "_" + DateTime.Now.ToString("yyyyMMddHHmmss");
+
+        string filePath = Path.Combine(projectRoot, fileName);
+
+        WriteRecordsToJson(records, filePath);
+        
+        stopwatch.Stop(); // Stop timing
+
+        Console.WriteLine($"Elapsed time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+    }
+    private static void WriteRecordsToJson(List<Record> records, string filePath)
+    {
+        filePath += ".json";
         var options = new JsonSerializerOptions
         {
             WriteIndented = true,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping // To avoid escaping of special characters like ü,ô
         };
 
-        string json = JsonSerializer.Serialize(records, options);
+        string outJson = JsonSerializer.Serialize(records, options);
 
-        string fileName = "TestData_" + recordCount.ToString()+ "_" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".json";
-
-        string projectRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..");
-        projectRoot = Path.GetFullPath(projectRoot);
-
-        string filePath = Path.Combine(projectRoot, fileName);
-
-        File.WriteAllText(filePath, json, Encoding.UTF8);
+        File.WriteAllText(filePath, outJson, Encoding.UTF8);
 
         var fileInfo = new FileInfo(filePath);
         long fileSizeInBytes = fileInfo.Length;
 
         Console.WriteLine($"Data written to {filePath}. \n File size: {ToReadableSize(fileSizeInBytes)} bytes");
-
-        stopwatch.Stop(); // Stop timing
-
-        Console.WriteLine($"Elapsed time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
     }
-    
-    public static string ToReadableSize(long bytes)
+    private static string ToReadableSize(long bytes)
     {
         if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes), "Value must be non-negative.");
 
@@ -266,105 +134,134 @@ class Program
 
         return $"{size:0.##} {suffixes[i]}";
     }
-
-    private static Record GenerateRecord()
+    private class AddressBlock
     {
-        var rand = new Random();
-
-        string firstName = firstNames[rand.Next(firstNames.Length)];
-        string lastName = lastNames[rand.Next(lastNames.Length)];
-        string country = countries[rand.Next(countries.Length)];
-
-        var cardTypeEntry = cardBins.ElementAt(rand.Next(cardBins.Count));
-        string cardType = cardTypeEntry.Key;
-        string cardBin = cardTypeEntry.Value;
-
-        string cardNumber = GenerateCardNumber(cardBin);
-        string expiryDate = GenerateExpiryDate(rand);
-        string cvv = rand.Next(100, 999).ToString("D3");
-
-        var record = new Record
-        {
-            FirstName = firstName,
-            LastName = lastName,
-            Country = country,
-            CardType = cardType,
-            CardNumber = cardNumber,
-            ExpiryDate = expiryDate,
-            CVV = cvv
-        };
-        return record;
-
+        public  string? AddressLine1 { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? AddressLine3 { get; set; }
+        public  string? PostalCode { get; set; }
+        public  string? City { get; set; }
+        public  string? Country { get; set; }
     }
-
-    private static string GenerateExpiryDate(Random rand)
+    public class CardHolder
     {
-        Random rand2 = new Random();
+        public string FirstName { get; set; }
+        public string LastName { get; set; }
+        public string? CompanyName { get; set; }
+        public string? Language { get; set; }
 
-        bool makeFaulty = rand2.NextDouble() < faultyChance;
-
-        int month = rand.Next(1, 13);
-
-        if (makeFaulty)
+        public CardHolder(string firstName, string lastName, string? companyName = null, string? language = null)
         {
-            month = rand.Next(13, 99); // Invalid month
+            FirstName = firstName;
+            LastName = lastName;
+            CompanyName = companyName;
+            Language = language;
         }
-
-        int year = DateTime.Now.Year + rand.Next(1, 6); // 1 to 5 years in the future
-        return $"{month.ToString("D2")}/{(year % 100).ToString("D2")}";
     }
-    private static string GenerateCardNumber(string bin)
+    
+    private class Product
     {
-        int length = 16;
+        public string? product { get; set; }
+        public string? cardType { get; set; }
+        public string? bin { get; set; }
 
-        if (bin.StartsWith("34") || bin.StartsWith("37")) length = 15;
-        else if (bin.StartsWith("62")) length = 19;
-
-        int randomLength = length - bin.Length - 1;
-
-        if (!counters.ContainsKey(bin)) counters[bin] = 0;
-        long counterValue = counters[bin]++;
-        string randomPart = counterValue.ToString().PadLeft(randomLength, '0');
-
-        string partialCardNumber = bin + randomPart;
-        int checkDigit = CalculateLuhnCheckDigit(partialCardNumber);
-        return partialCardNumber + checkDigit.ToString();
     }
 
-    private static int CalculateLuhnCheckDigit(string number)
+    private class Card
     {
-        Random rand = new Random();
+        public string ProductName { get; set; }
+        public string CardType { get; set; }
+        public string PAN { get; set; }
+        public string ExpiryDate { get; set; }
+        public string CVV { get; set; }
 
-        bool makeFaulty = rand.NextDouble() < faultyChance;
-
-        int sum = 0;
-        bool alternate = true;
-        for (int i = number.Length - 1; i >= 0; i--)
+        public Card(string productname, string cardType, string bin)
         {
-            int n = int.Parse(number[i].ToString());
-            if (alternate)
+            ProductName = productname;
+            CardType = cardType;
+            PAN = GeneratePAN(bin);
+            ExpiryDate = GenerateExpiryDate();
+            CVV = rand.Next(100, 999).ToString("D3"); ;
+        }
+        private string GeneratePAN(string bin)
+        {
+            int length = 16;
+
+            if (bin.StartsWith("34") || bin.StartsWith("37")) length = 15;
+            else if (bin.StartsWith("62")) length = 19;
+
+            int randomLength = length - bin.Length - 1;
+
+            if (!counters.ContainsKey(bin)) counters[bin] = 0;
+            long counterValue = counters[bin]++;
+            string randomPart = counterValue.ToString().PadLeft(randomLength, '0');
+
+            string partialPAN = bin + randomPart;
+            int checkDigit = CalculateLuhnCheckDigit(partialPAN);
+            return partialPAN + checkDigit.ToString();
+        }
+        private int CalculateLuhnCheckDigit(string number)
+        {
+            Random rand = new Random();
+
+            bool makeFaulty = rand.NextDouble() < faultyChance;
+
+            int sum = 0;
+            bool alternate = true;
+            for (int i = number.Length - 1; i >= 0; i--)
             {
-                n *= 2;
-                if (n > 9) n -= 9;
+                int n = int.Parse(number[i].ToString());
+                if (alternate)
+                {
+                    n *= 2;
+                    if (n > 9) n -= 9;
+                }
+                sum += n;
+                alternate = !alternate;
             }
-            sum += n;
-            alternate = !alternate;
+            if (makeFaulty)
+            {
+                return ((10 - (sum % 10)) % 10 + 1) % 10;  // Introduce a fault by returning an incorrect check digit while keeping it 0-9
+            }
+            return (10 - (sum % 10)) % 10;
         }
-        if (makeFaulty)
+        private static string GenerateExpiryDate()
         {
-            return ((10 - (sum % 10)) % 10 + 1) % 10;  // Introduce a fault by returning an incorrect check digit while keeping it 0-9
+            bool makeFaulty = rand.NextDouble() < faultyChance;
+
+            int month = rand.Next(1, 13);
+
+            if (makeFaulty)
+            {
+                month = rand.Next(13, 99); // Invalid month
+            }
+
+            int year = DateTime.Now.Year + rand.Next(1, 6); // 1 to 5 years in the future
+            return $"{month.ToString("D2")}/{(year % 100).ToString("D2")}";
         }
-        return (10 - (sum % 10)) % 10;
     }
 
+    private class Misc
+    {
+        public string? BusinessField1 { get; set; }
+        public string? BusinessField2 { get; set; } 
+        public string? BusinessField3 { get; set; }
+        public string? BusinessField4 { get; set; }
+        public string? BusinessField5 { get; set; }
+    }
     private class Record
     {
-        public required string FirstName { get; set; }
-        public required string LastName { get; set; }
-        public required string Country { get; set; }
-        public required string CardType { get; set; }
-        public required string CardNumber { get; set; }
-        public required string ExpiryDate { get; set; }
-        public required string CVV { get; set; }
+        public  CardHolder CardHolder { get; set; }
+        public  AddressBlock Address { get; set; }
+        public  Card Card { get; set; }
+        public Misc? Misc { get; set; }
+
+        public Record(CardHolder cardHolder, AddressBlock address, Card card, Misc? misc = null)
+        {
+            CardHolder = cardHolder;
+            Address = address;
+            Card = card;
+            Misc = misc;
+        }
     }
 }
