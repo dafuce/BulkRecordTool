@@ -7,23 +7,40 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Diagnostics;
+
+using BulkRecordTool;
+
 class Program
 {
-    static int recordCount = 100000; // Number of records to generate
-    static double faultyChance = 0.01; // 1% chance to make a card number faulty
-
-    private static Dictionary<string, long> counters = new Dictionary<string, long>(); // To ensure unique card numbers per BIN 
+    static string projectRoot;
+    static Settings settings;
+    private static Dictionary<string, long> counters = new Dictionary<string, long>();
     public static Random rand = new Random();
     static void Main(string[] args)
     {
+
+        var proc = Process.GetCurrentProcess(); // TODO : For memory usage tracking
+
+        for (int i = 0; i < 10; i++)
+        {
+            Console.WriteLine($"Working Set: {ToReadableSize(proc.WorkingSet64)}, Managed Heap: {ToReadableSize(GC.GetTotalMemory(false))}");
+            Thread.Sleep(500);
+        }
+        projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+        string settingsPath = Path.Combine(projectRoot, "settings.json");
+        Console.WriteLine($"Settings path: {settingsPath}");
+        settings = SettingsLoader.Load(settingsPath);
         var stopwatch = Stopwatch.StartNew(); // Start timing
 
         Console.WriteLine("Loading sample data...");
+        string fileName = settings.fileNameRoot + "_" + settings.recordCount.ToString() +"_" +DateTime.Now.ToString(settings.fileNameTimestampFormat);
 
-        string projectRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..");
-        projectRoot = Path.GetFullPath(projectRoot);
+        if (!Directory.Exists(settings.outputDirectory))
+        {
+            Directory.CreateDirectory(settings.outputDirectory);
+        }
 
-        string json = File.ReadAllText(Path.Combine(projectRoot,"sampledata.json"));
+        string json = File.ReadAllText(Path.Combine(projectRoot, "sampledata.json"));
         using JsonDocument doc = JsonDocument.Parse(json);
 
         // Extract simple arrays
@@ -62,11 +79,11 @@ class Program
 
         // Console.WriteLine("Combinations possible :" + (firstNames.Length * lastNames.Length * addresses.Length).ToString());
 
-        Console.WriteLine($"Generating {recordCount} records...");
+        Console.WriteLine($"Generating {settings.recordCount} records...");
 
-        List<Record> records = new List<Record>(recordCount);
+        List<Record> records = new List<Record>(settings.recordCount);
 
-        for (int i = 0; i < recordCount; i++)
+        for (int i = 0; i < settings.recordCount; i++)
         {
             string firstName = firstnames[rand.Next(firstnames.Count)];
             string lastName = lastnames[rand.Next(lastnames.Count)];
@@ -88,14 +105,23 @@ class Program
             records.Add(record);
         }
 
-        // Write to JSON file
+        // Write output file
 
-        string fileName = "TestData_" + recordCount.ToString() + "_" + DateTime.Now.ToString("yyyyMMddHHmmss");
+        string filePath = Path.Combine(settings.outputDirectory, fileName);
 
-        string filePath = Path.Combine(projectRoot, fileName);
+        if (settings.outputFormat.ToUpper() == "JSON")
+        {
+            WriteRecordsToJson(records, filePath);
+        } 
+        else if (settings.outputFormat.ToUpper() == "XML")
+        {
+            // WriteRecordsToXml(records, filePath);
+        }
+        else
+        {
+            Console.WriteLine($"Unsupported output format: {settings.outputFormat}. Supported formats are JSON and XML.");
+        }
 
-        WriteRecordsToJson(records, filePath);
-        
         stopwatch.Stop(); // Stop timing
 
         Console.WriteLine($"Elapsed time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
@@ -136,12 +162,12 @@ class Program
     }
     private class AddressBlock
     {
-        public  string? AddressLine1 { get; set; }
+        public string? AddressLine1 { get; set; }
         public string? AddressLine2 { get; set; }
         public string? AddressLine3 { get; set; }
-        public  string? PostalCode { get; set; }
-        public  string? City { get; set; }
-        public  string? Country { get; set; }
+        public string? PostalCode { get; set; }
+        public string? City { get; set; }
+        public string? Country { get; set; }
     }
     public class CardHolder
     {
@@ -158,7 +184,7 @@ class Program
             Language = language;
         }
     }
-    
+
     private class Product
     {
         public string? product { get; set; }
@@ -197,10 +223,10 @@ class Program
             string randomPart = counterValue.ToString().PadLeft(randomLength, '0');
 
             string partialPAN = bin + randomPart;
-            int checkDigit = CalculateLuhnCheckDigit(partialPAN);
+            int checkDigit = CalculateLuhnCheckDigit(partialPAN, settings.faultyChance);
             return partialPAN + checkDigit.ToString();
         }
-        private int CalculateLuhnCheckDigit(string number)
+        private int CalculateLuhnCheckDigit(string number, double faultyChance)
         {
             Random rand = new Random();
 
@@ -227,7 +253,7 @@ class Program
         }
         private static string GenerateExpiryDate()
         {
-            bool makeFaulty = rand.NextDouble() < faultyChance;
+            bool makeFaulty = rand.NextDouble() < settings.faultyChance;
 
             int month = rand.Next(1, 13);
 
@@ -244,16 +270,16 @@ class Program
     private class Misc
     {
         public string? BusinessField1 { get; set; }
-        public string? BusinessField2 { get; set; } 
+        public string? BusinessField2 { get; set; }
         public string? BusinessField3 { get; set; }
         public string? BusinessField4 { get; set; }
         public string? BusinessField5 { get; set; }
     }
     private class Record
     {
-        public  CardHolder CardHolder { get; set; }
-        public  AddressBlock Address { get; set; }
-        public  Card Card { get; set; }
+        public CardHolder CardHolder { get; set; }
+        public AddressBlock Address { get; set; }
+        public Card Card { get; set; }
         public Misc? Misc { get; set; }
 
         public Record(CardHolder cardHolder, AddressBlock address, Card card, Misc? misc = null)

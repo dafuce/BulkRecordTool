@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BulkRecordTool")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2e5a8ae7203c0864986aa7e9df1ca19c3b30a090")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5f8c1718d798d0af4723decf86441c96ebdb51e1")]
 [assembly: System.Reflection.AssemblyProductAttribute("BulkRecordTool")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BulkRecordTool")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
