@@ -1,11 +1,13 @@
 {
-    "recordCount": 1000000,
+    "recordCount": 100,
+    "maxRecordsPerFile": 100000,
     "faultyChance": 0.01,
     "fileNameRoot" : "TestTata_",
     "fileNameTimestampFormat": "yyyyMMddHHmmss",
     "outputDirectory": "C:\\Users\\dafuc\\Documents\\BulkRecordTool\\output",
     "outputFormat": "JSON",
     "overwriteOutputFile": false,
+    "compressOutputFile": false,
     "enableLogging": true,
     "logFile": "app.log"
 }

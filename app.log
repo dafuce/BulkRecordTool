@@ -1,0 +1,10 @@
+﻿[2025-09-06 02:40:36] Process start. Loading settings...
+[2025-09-06 02:40:36] Logger now writing to C:\Users\dafuc\Documents\BulkRecordTool\app.log
+[2025-09-06 02:40:36] Settings loaded.
+[2025-09-06 02:40:36] Sample data loaded.
+[2025-09-06 02:40:36] Calculating 100 records into 1 file/s...
+[2025-09-06 02:40:36] Generated 100 records with 1 faulty records.
+[2025-09-06 02:40:36] Data written to C:\Users\dafuc\Documents\BulkRecordTool\output\TestTata__100_20250906024036_1.json. 
+[2025-09-06 02:40:36] File size: 79,83 KB
+[2025-09-06 02:40:36] Peak Memory Working Set: 32,32 MB
+[2025-09-06 02:40:36] Process ended. Elapsed time: 0,04 seconds

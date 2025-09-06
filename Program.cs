@@ -16,24 +16,26 @@ class Program
     static Settings settings;
     private static Dictionary<string, long> counters = new Dictionary<string, long>();
     public static Random rand = new Random();
+    public static int faultyRecords = 0; // To track number of faulty records generated
     static void Main(string[] args)
     {
+        var proc = Process.GetCurrentProcess(); // For memory usage tracking
 
-        var proc = Process.GetCurrentProcess(); // TODO : For memory usage tracking
+        Logger.Instance.WriteLine("Process start. Loading settings...");
 
-        for (int i = 0; i < 10; i++)
-        {
-            Console.WriteLine($"Working Set: {ToReadableSize(proc.WorkingSet64)}, Managed Heap: {ToReadableSize(GC.GetTotalMemory(false))}");
-            Thread.Sleep(500);
-        }
         projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
         string settingsPath = Path.Combine(projectRoot, "settings.json");
-        Console.WriteLine($"Settings path: {settingsPath}");
         settings = SettingsLoader.Load(settingsPath);
+
+        if (settings.enableLogging)
+        {
+            Logger.Instance.SetLogFile(Path.Combine(projectRoot, settings.logFile));
+        }
+        Logger.Instance.WriteLine("Settings loaded.");
         var stopwatch = Stopwatch.StartNew(); // Start timing
 
-        Console.WriteLine("Loading sample data...");
-        string fileName = settings.fileNameRoot + "_" + settings.recordCount.ToString() +"_" +DateTime.Now.ToString(settings.fileNameTimestampFormat);
+
+        string fileName = settings.fileNameRoot + "_" + settings.recordCount.ToString() + "_" + DateTime.Now.ToString(settings.fileNameTimestampFormat);
 
         if (!Directory.Exists(settings.outputDirectory))
         {
@@ -68,6 +70,8 @@ class Program
                         .Deserialize<List<Product>>(productsJson.GetRawText())!
                         .ToList();
 
+        Logger.Instance.WriteLine("Sample data loaded.");
+
         // Initialize counters for each BIN
         foreach (Product p in products)
         {
@@ -77,54 +81,88 @@ class Program
             }
         }
 
-        // Console.WriteLine("Combinations possible :" + (firstNames.Length * lastNames.Length * addresses.Length).ToString());
+        int totalFiles = settings.recordCount % settings.maxRecordsPerFile == 0
+        ? settings.recordCount / settings.maxRecordsPerFile
+        : settings.recordCount / settings.maxRecordsPerFile + 1;
 
-        Console.WriteLine($"Generating {settings.recordCount} records...");
-
-        List<Record> records = new List<Record>(settings.recordCount);
-
-        for (int i = 0; i < settings.recordCount; i++)
+        if (totalFiles > 100)
         {
-            string firstName = firstnames[rand.Next(firstnames.Count)];
-            string lastName = lastnames[rand.Next(lastnames.Count)];
+            throw new Exception ("Warning: Generating more than 100 files. Consider increasing maxRecordsPerFile to reduce the number of files.");
+        }
 
-            CardHolder cardHolder = new CardHolder(firstName, lastName, "", "");
+        Logger.Instance.WriteLine($"Calculating {settings.recordCount.ToString("N0")} records into {totalFiles} file/s...");
 
-            AddressBlock address = addresses[rand.Next(addresses.Count)];
+        // Logger.Instance.WriteLine("Combinations possible :" + (firstNames.Length * lastNames.Length * addresses.Length).ToString());
 
-            Product prod = products[rand.Next(products.Count)];
-            Card card = new Card(prod.product!, prod.cardType!, prod.bin!); // Generate card with unique PAN, ExpiryDate, CVV
+        for (int i = 0; i < totalFiles; i++)
+        {
+            // Generate records for this file
+            List<Record> records = new List<Record>(settings.maxRecordsPerFile);
 
-            Record record = new Record(
-                cardHolder,
-                address,
-                card,
-                null
+            int recordsInThisFile = Math.Min(
+                settings.maxRecordsPerFile,
+                settings.recordCount - i * settings.maxRecordsPerFile
             );
 
-            records.Add(record);
-        }
+            for (int j = 0; j < recordsInThisFile; j++)
+            {
+                string firstName = firstnames[rand.Next(firstnames.Count)];
+                string lastName = lastnames[rand.Next(lastnames.Count)];
 
-        // Write output file
+                CardHolder cardHolder = new CardHolder(firstName, lastName, "", "");
 
-        string filePath = Path.Combine(settings.outputDirectory, fileName);
+                AddressBlock address = addresses[rand.Next(addresses.Count)];
 
-        if (settings.outputFormat.ToUpper() == "JSON")
-        {
-            WriteRecordsToJson(records, filePath);
-        } 
-        else if (settings.outputFormat.ToUpper() == "XML")
-        {
-            // WriteRecordsToXml(records, filePath);
-        }
-        else
-        {
-            Console.WriteLine($"Unsupported output format: {settings.outputFormat}. Supported formats are JSON and XML.");
+                Product prod = products[rand.Next(products.Count)];
+                Card card = new Card(
+                    firstName + " " + lastName,
+                    prod.product!,
+                    prod.cardType!,
+                    prod.bin!
+                );
+
+                Record record = new Record(
+                    (i * settings.maxRecordsPerFile + j).ToString().PadLeft(8, '0'), // global unique ID
+                    cardHolder,
+                    address,
+                    card,
+                    null
+                );
+
+                records.Add(record);
+            }
+
+            Logger.Instance.WriteLine($"Generated {records.Count.ToString("N0")} records with {faultyRecords} faulty records.");
+
+            // Write each chunk to a separate file
+
+            string filename = $"{settings.fileNameRoot}_{recordsInThisFile}_{DateTime.Now.ToString(settings.fileNameTimestampFormat)}_{i + 1}";
+            string filePath = Path.Combine(settings.outputDirectory, filename);
+
+            if (settings.outputFormat.ToUpper() == "JSON")
+            {
+                WriteRecordsToJson(records, filePath);
+            }
+            else if (settings.outputFormat.ToUpper() == "XML")
+            {
+                // WriteRecordsToXml(records, filePath);
+            }
+            else
+            {
+                Logger.Instance.WriteLine($"Unsupported output format: {settings.outputFormat}. Supported formats are JSON and XML.");
+            }
+
+            faultyRecords = 0; // Reset for next file
         }
 
         stopwatch.Stop(); // Stop timing
 
-        Console.WriteLine($"Elapsed time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+        Logger.Instance.WriteLine($"Peak Memory Working Set: {ToReadableSize(proc.PeakWorkingSet64)}");
+
+        Logger.Instance.WriteLine($"Process ended. Elapsed time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+        
+        // logger.Dispose(); // Ensure logger is disposed to flush all logs
+        
     }
     private static void WriteRecordsToJson(List<Record> records, string filePath)
     {
@@ -142,7 +180,8 @@ class Program
         var fileInfo = new FileInfo(filePath);
         long fileSizeInBytes = fileInfo.Length;
 
-        Console.WriteLine($"Data written to {filePath}. \n File size: {ToReadableSize(fileSizeInBytes)} bytes");
+        Logger.Instance.WriteLine($"Data written to {filePath}. ");
+        Logger.Instance.WriteLine($"File size: {ToReadableSize(fileSizeInBytes)}");
     }
     private static string ToReadableSize(long bytes)
     {
@@ -195,14 +234,18 @@ class Program
 
     private class Card
     {
+        public string EmbossedName { get; set; }
         public string ProductName { get; set; }
         public string CardType { get; set; }
         public string PAN { get; set; }
         public string ExpiryDate { get; set; }
         public string CVV { get; set; }
+        public string Track1 => $"%B{PAN}^{EmbossedName}^{ExpiryDate.Replace("/", "").Substring(2)}00000000000000000?;{PAN}={ExpiryDate.Replace("/", "").Substring(2)}00000000000000000?";
+        public string Track2 => $";{PAN}={ExpiryDate.Replace("/", "").Substring(2)}00000000000000000?";
 
-        public Card(string productname, string cardType, string bin)
+        public Card(string embossedname, string productname, string cardType, string bin)
         {
+            EmbossedName = embossedname.ToUpper();
             ProductName = productname;
             CardType = cardType;
             PAN = GeneratePAN(bin);
@@ -247,6 +290,7 @@ class Program
             }
             if (makeFaulty)
             {
+                faultyRecords++;
                 return ((10 - (sum % 10)) % 10 + 1) % 10;  // Introduce a fault by returning an incorrect check digit while keeping it 0-9
             }
             return (10 - (sum % 10)) % 10;
@@ -277,13 +321,15 @@ class Program
     }
     private class Record
     {
+        public string Id { get; set; }
         public CardHolder CardHolder { get; set; }
         public AddressBlock Address { get; set; }
         public Card Card { get; set; }
         public Misc? Misc { get; set; }
 
-        public Record(CardHolder cardHolder, AddressBlock address, Card card, Misc? misc = null)
+        public Record(string id,CardHolder cardHolder, AddressBlock address, Card card, Misc? misc = null)
         {
+            Id = id;
             CardHolder = cardHolder;
             Address = address;
             Card = card;
