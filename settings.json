@@ -9,5 +9,5 @@
     "overwriteOutputFile": false,
     "compressOutputFile": false,
     "enableLogging": true,
-    "logFile": "app.log"
+    "logFile": "applog"
 }
